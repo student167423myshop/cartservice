@@ -2,10 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"net/url"
 	"strconv"
-
-	"github.com/gofiber/fiber/v2"
 )
 
 type Cart struct {
@@ -18,85 +16,84 @@ type CartItem struct {
 	Quantity  int
 }
 
-func getCart(c *fiber.Ctx) error {
-	var clientId = c.Params("userId")
-	client := getRedis()
-
-	cartJsonFromRedis, err := client.Get(clientId).Result()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var cartFromRedis Cart
-	json.Unmarshal([]byte(cartJsonFromRedis), &cartFromRedis)
-
-	return c.JSON(cartFromRedis)
+func getEmptyCart(clientId string) Cart {
+	var cartItems []CartItem
+	cart := Cart{clientId, cartItems}
+	return cart
 }
 
-func addItem(c *fiber.Ctx) error {
-	var clientId = c.Params("userId")
-	var productId = c.Params("productId")
-	var quantityStr = c.Params("quantity")
-
-	quantity, err := strconv.Atoi(quantityStr)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var cartItem = CartItem{
-		ProductId: productId,
-		Quantity:  quantity,
-	}
-
-	client := getRedis()
-
-	cartJsonFromRedis, err := client.Get(clientId).Result()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var cartFromRedis Cart
-	json.Unmarshal([]byte(cartJsonFromRedis), &cartFromRedis)
-
-	cartFromRedis.CartItems = append(cartFromRedis.CartItems, cartItem)
-
-	newCartJson, err := json.Marshal(cartFromRedis)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	err = client.Set(clientId, newCartJson, 0).Err()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	return nil
+func getWriteCart(cart Cart) []byte {
+	jsonData, _ := json.Marshal(cart)
+	return jsonData
 }
 
-func emptyCart(c *fiber.Ctx) error {
-	var clientId = c.Params("userId")
+func getCartFromBytes(bytes []byte) Cart {
+	var cart Cart
+	_ = json.Unmarshal(bytes, &cart)
+	return cart
+}
 
-	client := getRedis()
+func getCart(clientId string, productId string, quantity int) Cart {
+	cartItem := CartItem{productId, quantity}
+	cartItems := []CartItem{cartItem}
+	cart := Cart{clientId, cartItems}
+	return cart
+}
 
-	cartJsonFromRedis, err := client.Get(clientId).Result()
-	if err != nil {
-		fmt.Println(err)
+func getCartItem(productId string, quantity int) CartItem {
+	cartItem := CartItem{productId, quantity}
+	return cartItem
+}
+
+func getCartFormSample(cart Cart) url.Values {
+	form := url.Values{}
+	form.Add("userId", cart.ClientId)
+	form.Add("productId", cart.CartItems[0].ProductId)
+	form.Add("quantity", strconv.Itoa(cart.CartItems[0].Quantity))
+	return form
+}
+
+func addCartItemToCart(cart Cart, newCartItem CartItem) Cart {
+	found := false
+	if newCartItem.Quantity > 0 {
+		for index, cartItem := range cart.CartItems {
+			if cartItem.ProductId == newCartItem.ProductId {
+				cartItem.Quantity += newCartItem.Quantity
+				cart.CartItems[index].Quantity = cartItem.Quantity
+				found = true
+			}
+		}
+		if !found {
+			cart.CartItems = append(cart.CartItems, newCartItem)
+		}
+	} else {
+		cart = subCartItemFromCart(cart, newCartItem)
 	}
+	return cart
+}
 
-	var cartFromRedis Cart
-	json.Unmarshal([]byte(cartJsonFromRedis), &cartFromRedis)
+func addCartItemVariablesToCart(cart Cart, productId string, quantity int) Cart {
+	cartItem := getCartItem(productId, quantity)
+	cart = addCartItemToCart(cart, cartItem)
+	return cart
+}
 
-	cartFromRedis.CartItems = nil
+func removeCartItem(cartItems []CartItem, index int) []CartItem {
+	return append(cartItems[:index], cartItems[index+1:]...)
+}
 
-	newCartJson, err := json.Marshal(cartFromRedis)
-	if err != nil {
-		fmt.Println(err)
+func subCartItemFromCart(cart Cart, newCartItem CartItem) Cart {
+	if newCartItem.Quantity < 0 {
+		for index, cartItem := range cart.CartItems {
+			if cartItem.ProductId == newCartItem.ProductId {
+				cartItem.Quantity += newCartItem.Quantity
+				if cartItem.Quantity <= 0 {
+					cart.CartItems = removeCartItem(cart.CartItems, index)
+				} else {
+					cart.CartItems[index].Quantity = cartItem.Quantity
+				}
+			}
+		}
 	}
-
-	err = client.Set(clientId, newCartJson, 0).Err()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	return nil
+	return cart
 }
