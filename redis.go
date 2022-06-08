@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/alicebob/miniredis"
 	"github.com/go-redis/redis"
 )
@@ -17,9 +19,14 @@ func getRedis() *redis.Client {
 }
 
 func initNewRedis() {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	password := os.Getenv("REDIS_PASS")
 	redisClient = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
+		Addr:     addr,
+		Password: password,
 		DB:       0,
 	})
 }
