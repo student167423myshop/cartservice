@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/alicebob/miniredis"
@@ -14,7 +15,7 @@ func getRedis() *redis.Client {
 	if redisClient == nil {
 		initNewRedis()
 	}
-
+	fmt.Printf(" -- ClusterInfo: %s\n.", redisClient.ClusterInfo().String())
 	return redisClient
 }
 
