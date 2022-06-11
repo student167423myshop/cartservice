@@ -8,9 +8,9 @@ import (
 
 func getRouter() *mux.Router {
 	r := mux.NewRouter()
-	r.HandleFunc("/cart", AddItemToCartHandler).Methods(http.MethodPost)
-	r.HandleFunc("/cart/{userId}", GetCartHandler).Methods(http.MethodGet)
-	r.HandleFunc("/cart/{userId}/empty", EmptyCartHandler).Methods(http.MethodGet)
+	r.HandleFunc("/cart", addItemToCartHandler).Methods(http.MethodPost)
+	r.HandleFunc("/cart/{userId}", getCartHandler).Methods(http.MethodGet)
+	r.HandleFunc("/cart/{userId}/empty", emptyCartHandler).Methods(http.MethodGet)
 	r.HandleFunc("/healthz", getHealthz).Methods(http.MethodGet)
 	return r
 }

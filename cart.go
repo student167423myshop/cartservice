@@ -2,34 +2,61 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strconv"
 )
 
+// STRUCTS
 type Cart struct {
-	ClientId  string
-	CartItems []CartItem
+	ClientId  string     `json:"ClientId"`
+	CartItems []CartItem `json:"CartItems"`
 }
 
 type CartItem struct {
-	ProductId string
-	Quantity  int
+	ProductId string `json:"ProductId"`
+	Quantity  int    `json:"Quantity"`
 }
 
-func getEmptyCart(clientId string) Cart {
-	var cartItems []CartItem
-	cart := Cart{clientId, cartItems}
+// API
+func getCartFromRedis(clientId string) Cart {
+	client := getRedis()
+	var cart Cart
+	jsonData, err := client.Get(clientId).Result()
+	if err != nil {
+		cart = getEmptyCart(clientId)
+	} else {
+		_ = json.Unmarshal([]byte(jsonData), &cart)
+	}
 	return cart
 }
 
-func getWriteCart(cart Cart) []byte {
-	jsonData, _ := json.Marshal(cart)
-	return jsonData
+func replaceCartInRedis(cart Cart) (Cart, error) {
+	var replacedCart Cart
+	client := getRedis()
+	jsonCart, err := json.Marshal(cart)
+	if err != nil {
+
+		return replacedCart, err
+	}
+	_ = client.Set(cart.ClientId, jsonCart, 0).Err()
+	replacedCart = getCartFromRedis(cart.ClientId)
+	return replacedCart, nil
 }
 
-func getCartFromBytes(bytes []byte) Cart {
-	var cart Cart
-	_ = json.Unmarshal(bytes, &cart)
+func addCartItemToRedis(clientId string, cartItem CartItem) Cart {
+	cart := getCartFromRedis(clientId)
+	cart = addCartItemToCart(cart, cartItem)
+	json, _ := json.Marshal(cart)
+	client := getRedis()
+	_ = client.Set(clientId, json, 0).Err()
+	return getCartFromRedis(clientId)
+}
+
+// INNER FUNCTIONS
+func getEmptyCart(clientId string) Cart {
+	var cartItems []CartItem
+	cart := Cart{clientId, cartItems}
 	return cart
 }
 
@@ -38,11 +65,6 @@ func getCart(clientId string, productId string, quantity int) Cart {
 	cartItems := []CartItem{cartItem}
 	cart := Cart{clientId, cartItems}
 	return cart
-}
-
-func getCartItem(productId string, quantity int) CartItem {
-	cartItem := CartItem{productId, quantity}
-	return cartItem
 }
 
 func getCartFormSample(cart Cart) url.Values {
@@ -72,16 +94,6 @@ func addCartItemToCart(cart Cart, newCartItem CartItem) Cart {
 	return cart
 }
 
-func addCartItemVariablesToCart(cart Cart, productId string, quantity int) Cart {
-	cartItem := getCartItem(productId, quantity)
-	cart = addCartItemToCart(cart, cartItem)
-	return cart
-}
-
-func removeCartItem(cartItems []CartItem, index int) []CartItem {
-	return append(cartItems[:index], cartItems[index+1:]...)
-}
-
 func subCartItemFromCart(cart Cart, newCartItem CartItem) Cart {
 	if newCartItem.Quantity < 0 {
 		for index, cartItem := range cart.CartItems {
@@ -95,5 +107,18 @@ func subCartItemFromCart(cart Cart, newCartItem CartItem) Cart {
 			}
 		}
 	}
+	return cart
+}
+
+func removeCartItem(cartItems []CartItem, index int) []CartItem {
+	return append(cartItems[:index], cartItems[index+1:]...)
+}
+
+func getCartFromForm(r *http.Request) Cart {
+	var clientId = r.FormValue("userId")
+	var productId = r.FormValue("productId")
+	var quantityStr = r.FormValue("quantity")
+	quantity, _ := strconv.Atoi(quantityStr)
+	var cart = getCart(clientId, productId, quantity)
 	return cart
 }
